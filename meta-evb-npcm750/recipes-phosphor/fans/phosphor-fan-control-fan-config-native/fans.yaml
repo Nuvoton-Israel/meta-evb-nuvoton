@@ -1,0 +1,6 @@
+fans:
+  - inventory: /system/chassis/motherboard/fan1
+    cooling_zone: 0
+    cooling_profile: air
+    sensors:
+      - fan1

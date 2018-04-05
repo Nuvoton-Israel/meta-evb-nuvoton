@@ -1,0 +1,295 @@
+# Air cooled npcm750 fan policy for PDM.
+#
+# An air cooled npcm750 requires a minimum of 1 functional fan.
+# If the number of functional fans drops below that
+# power the system off.
+
+- name: fan1
+  class: group
+  group: path
+  members:
+    - meta: FAN
+      path: /xyz/openbmc_project/inventory/system/chassis/motherboard/fan1
+
+- name: fans
+  description: >
+    'An air cooled npcm750 has 1 fan to monitor.'
+  class: group
+  group: path
+  members:
+    - meta: FAN
+      path: /xyz/openbmc_project/inventory/system/chassis/motherboard/fan1
+
+- name: chassis state
+  description: >
+    'npcm750 has a single chassis to monitor.'
+  class: group
+  group: path
+  members:
+    - meta: CHASSISSTATE
+      path: /xyz/openbmc_project/state/chassis0
+
+- name: chassis
+  description: >
+    'npcm750 has a single chassis to monitor.'
+  class: group
+  group: path
+  members:
+    - meta: CHASSIS
+      path: /xyz/openbmc_project/inventory/system/chassis
+
+- name: fan present
+  description: >
+    'Monitor the presence state of each fan.'
+  class: group
+  group: property
+  type: boolean
+  members:
+    - interface: xyz.openbmc_project.Inventory.Item
+      meta: PRESENT
+      property: Present
+
+- name: fan functional
+  description: >
+    'Monitor the functional state of each fan.'
+  class: group
+  group: property
+  type: boolean
+  members:
+    - interface: xyz.openbmc_project.State.Decorator.OperationalStatus
+      meta: FUNCTIONAL
+      property: Functional
+
+- name: chassis powered
+  description: >
+    'Monitor the chassis power state.'
+  class: group
+  group: property
+  type: string
+  members:
+    - interface: xyz.openbmc_project.State.Chassis
+      meta: CHASSIS_STATE
+      property: CurrentPowerState
+
+- name: chassis air cooled
+  description: >
+    'Monitor the chassis cooling type.'
+  class: group
+  group: property
+  type: boolean
+  members:
+    - interface: xyz.openbmc_project.Inventory.Decorator.CoolingType
+      meta: COOLING_TYPE
+      property: AirCooled
+
+- name: watch fan present
+  description: >
+    'Trigger logic on fan presence state changes.'
+  class: watch
+  watch: property
+  paths: fans
+  properties: fan present
+  callback: check cooling type
+
+- name: watch fan functional
+  description: >
+    'Trigger logic on fan functional state changes.'
+  class: watch
+  watch: property
+  paths: fans
+  properties: fan functional
+  callback: check cooling type
+
+- name: watch chassis state
+  description: >
+    'Trigger logic on chassis power state changes.'
+  class: watch
+  watch: property
+  paths: chassis state
+  properties: chassis powered
+  callback: check cooling type
+
+- name: watch cooling type
+  description: >
+    'Maintain a cache of the chassis cooling type.'
+  class: watch
+  watch: property
+  paths: chassis
+  properties: chassis air cooled
+
+- name: check cooling type
+  description: >
+    'If this condition passes the chassis is air cooled.'
+  class: condition
+  condition: count
+  paths: chassis
+  properties: chassis air cooled
+  callback: check power
+  countop: '=='
+  countbound: 0
+  op: '=='
+  bound: true
+
+- name: check power
+  description: >
+    'If the chassis has power, check fans.'
+  class: condition
+  condition: count
+  paths: chassis state
+  properties: chassis powered
+  callback: check fans
+  countop: '>'
+  countbound: 0
+  op: '=='
+  bound: xyz.openbmc_project.State.Chassis.PowerState.On
+
+- name: check fans
+  description: >
+    'Verify there is at least one functional fan, power off if not.
+     Create an error if a fan is nonfuncitonal or not present'
+  class: callback
+  callback: group
+  members:
+    - check group presence
+    - check group functional
+    - check individual presence
+    - check individual functional
+
+- name: check individual presence
+  description: >
+    'Verify each of the 1 fan is present.'
+  class: callback
+  callback: group
+  members:
+    - check fan1 presence
+
+- name: check individual functional
+  description: >
+    'Verify each of the 1 fan are functional.'
+  class: callback
+  callback: group
+  members:
+    - check fan1 functional
+
+- name: check group presence
+  description: >
+    'If this condition passes more than one fan has been unplugged
+    for more than 25 seconds.  Shut the system down.  Count present
+    fans rather than non-present fans since the latter would pass
+    if the fan has not been created for some reason.
+
+    For a more detailed definition of unplugged, consult the documentation
+    of xyz.openbmc_project.Inventory.Item and/or the documentation
+    of the fan inventory object implementation.'
+  class: condition
+  condition: count
+  paths: fans
+  properties: fan present
+  defer: 25000000us
+  callback: log and shutdown
+  countop: '<'
+  countbound: 1
+  op: '=='
+  bound: true
+
+- name: check group functional
+  description: >
+    'If this condition passes more than one fan in the group has been
+    marked as nonfunctional for five seconds.  Shut the system down.
+
+    For a more detailed definition of nonfunctional, consult the documentation
+    of xyz.openbmc_project.State.Decorator.OperationalStatus and/or the
+    documentation of the fan inventory object implementation.'
+  class: condition
+  condition: count
+  paths: fans
+  properties: fan functional
+  defer: 5000000us
+  callback: log and shutdown
+  countop: '>'
+  countbound: 1
+  op: '=='
+  bound: false
+
+- name: check fan1 presence
+  description: >
+    'If this condition passes fan1 has been unplugged for more than 20 seconds.'
+  class: condition
+  condition: count
+  paths: fan1
+  properties: fan present
+  defer: 20000000us
+  callback: notpresent fan1 error
+  countop: '<'
+  countbound: 1
+  op: '=='
+  bound: true
+
+- name: check fan1 functional
+  description: >
+    'If this condition passes fan1 has been marked as nonfunctional.'
+  class: condition
+  condition: count
+  paths: fan1
+  properties: fan functional
+  callback: nonfunctional fan1 error
+  countop: '>'
+  countbound: 0
+  op: '=='
+  bound: false
+
+- name: shutdown
+  description: >
+    'Shut down the system.'
+  class: callback
+  callback: method
+  service: org.freedesktop.systemd1
+  path: /org/freedesktop/systemd1
+  interface: org.freedesktop.systemd1.Manager
+  method: StartUnit
+  args:
+    - value: obmc-chassis-hard-poweroff@0.target
+      type: string
+    - value: replace
+      type: string
+
+- name: log
+  description: >
+    'Log a shutdown event to the systemd journal.'
+  class: callback
+  callback: journal
+  paths: chassis state
+  properties: chassis powered
+  severity: ERR
+  message: Shutting down system.  There are not enough functional fans.
+
+- name: notpresent fan1 error
+  class: callback
+  callback: elog
+  paths: fan1
+  properties: fan present
+  error: xyz::openbmc_project::Inventory::Error::NotPresent
+  metadata:
+    - name: xyz::openbmc_project::Inventory::NotPresent::CALLOUT_INVENTORY_PATH
+      value: /xyz/openbmc_project/inventory/system/chassis/motherboard/fan1
+      type: string
+
+- name: nonfunctional fan1 error
+  class: callback
+  callback: elog
+  paths: fan1
+  properties: fan functional
+  error: xyz::openbmc_project::Inventory::Error::Nonfunctional
+  metadata:
+    - name: xyz::openbmc_project::Inventory::Nonfunctional::CALLOUT_INVENTORY_PATH
+      value: /xyz/openbmc_project/inventory/system/chassis/motherboard/fan1
+      type: string
+
+- name: create shutdown error
+  description: >
+    'Create a Fan Shutdown Error log.'
+  class: callback
+  callback: elog
+  paths: chassis state
+  properties: chassis powered
+  error: xyz::openbmc_project::State::Shutdown::Inventory::Error::Fan

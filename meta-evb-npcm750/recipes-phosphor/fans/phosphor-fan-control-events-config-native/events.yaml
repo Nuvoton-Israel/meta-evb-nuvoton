@@ -1,0 +1,175 @@
+groups:
+    - name: zone0_fans
+      description: Group of fan inventory objects for zone 0
+      type: /xyz/openbmc_project/inventory
+      members:
+          - /system/chassis/motherboard/fan1
+
+    - name: zone0_ambient
+      description: Group of core temperature sensors for zone 0
+      type: /xyz/openbmc_project/sensors
+      members:
+
+          - /temperature/temp1
+          - /temperature/temp2
+
+    - name: zone0_fan_tachs
+      description: Group of fan tach feedback speed inputs for zone 0
+      type: /xyz/openbmc_project/sensors
+      members:
+          - /fan_tach/fan1
+actions:
+    - name: set_request_speed_base_with_max
+      description: >
+          Set the base request speed of a zone to the max value of a group for
+          calculating a new target speed
+    - name: count_state_before_speed
+      description: Set the speed when a number of properties at a state
+      parameters:
+          - count
+          - property
+          - speed
+    - name: set_floor_from_average_sensor_value
+      description: Set floor speed from first entry with average less than key
+      parameters:
+          - map
+    - name: set_ceiling_from_average_sensor_value
+      description: Set ceiling speed based on key transition values with average
+      parameters:
+          - map
+    - name: set_net_increase_speed
+      description: >
+          Set the speed increase delta based on a factor applied to
+          the delta increase size times the given value and property's
+          value difference
+      parameters:
+          - property
+          - factor
+          - delta
+    - name: set_net_decrease_speed
+      description: >
+          Set the speed decrease delta based on a factor applied to
+          the delta decrease size times the given value and property's
+          value difference
+      parameters:
+          - property
+          - factor
+          - delta
+
+events:
+    - name: missing_before_high_speed
+      zone_conditions:
+          - name: air_cooled_chassis
+            zones:
+                - 0
+      group: zone0_fans
+      interface: xyz.openbmc_project.Inventory.Item
+      property:
+          name: Present
+          type: bool
+      actions:
+          - name: count_state_before_speed
+            count: 1
+            property: false
+            speed:
+                value: 1200
+                type: uint64_t
+    - name: fails_before_high_speed
+      zone_conditions:
+          - name: air_cooled_chassis
+            zones:
+                - 0
+      group: zone0_fans
+      interface: xyz.openbmc_project.State.Decorator.OperationalStatus
+      property:
+          name: Functional
+          type: bool
+      actions:
+          - name: count_state_before_speed
+            count: 1
+            property: false
+            speed:
+                value: 1200
+                type: uint64_t
+    - name: set_air_cooled_speed_boundaries_based_on_ambient
+      zone_conditions:
+          - name: air_cooled_chassis
+            zones:
+                - 0
+      group: zone0_ambient
+      interface: xyz.openbmc_project.Sensor.Value
+      property:
+          name: Value
+          type: int64_t
+      actions:
+          - name: set_floor_from_average_sensor_value
+            map:
+                value:
+                    - 19000: 250
+                    - 25000: 600
+                    - 26000: 700
+                    - 29000: 900
+                    - 30000: 1200
+                    - 33000: 1400
+                    - 36000: 1500
+                    - 39000: 1600
+                    - 42000: 1700
+                    - 45000: 1850
+                type: std::map<int64_t, uint64_t>
+          - name: set_ceiling_from_average_sensor_value
+            map:
+                value:
+                    - 19000: 300
+                    - 25000: 650
+                    - 26000: 750
+                    - 29000: 950
+                    - 30000: 1250
+                    - 33000: 1450
+                    - 36000: 1550
+                    - 39000: 1650
+                    - 42000: 1750
+                    - 45000: 1900
+                type: std::map<int64_t, uint64_t>
+
+    - name: set_base_request_speed_to_max_tach_feedback
+      zone_conditions:
+          - name: air_cooled_chassis
+            zones:
+                - 0
+      group: zone0_fan_tachs
+      interface: xyz.openbmc_project.Sensor.Value
+      property:
+          name: Value
+          type: int64_t
+      actions:
+          - name: set_request_speed_base_with_max
+
+    - name: speed_changes_based_on_ambient
+      zone_conditions:
+          - name: air_cooled_chassis
+            zones:
+                - 0
+      group: zone0_ambient
+      interface: xyz.openbmc_project.Sensor.Value
+      property:
+          name: Value
+          type: int64_t
+      actions:
+          - name: set_net_increase_speed
+            property: 73000
+            factor:
+                value: 1000
+                type: int64_t
+            delta:
+                value: 400
+                type: uint64_t
+          - name: set_net_decrease_speed
+            property: 70000
+            factor:
+                value: 1000
+                type: int64_t
+            delta:
+                value: 40
+                type: uint64_t
+      timer:
+          interval: 5

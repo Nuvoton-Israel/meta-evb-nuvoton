@@ -1,0 +1,8 @@
+fans:
+  - inventory: /system/chassis/motherboard/fan1
+    allowed_out_of_range_time: 20
+    deviation: 20
+    num_sensors_nonfunc_for_fan_nonfunc: 1
+    sensors:
+      - name: fan1
+        has_target: true
