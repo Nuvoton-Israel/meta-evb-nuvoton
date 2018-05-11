@@ -12,6 +12,6 @@ ENVS = "obmc/hwmon/{0}"
 SYSTEMD_ENVIRONMENT_FILE_${PN} += "${@compose_list(d, 'ENVS', 'ITEMS')}"
 
 # Fan sensors
-FITEMS = "mft@0.conf"
+FITEMS = "fan@0.conf"
 FENVS = "obmc/hwmon/apb/{0}"
 SYSTEMD_ENVIRONMENT_FILE_${PN} += "${@compose_list(d, 'FENVS', 'FITEMS')}"
